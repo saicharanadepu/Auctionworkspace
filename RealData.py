@@ -550,30 +550,47 @@ elif st.session_state.page == "Upload":
 
     st.subheader("📤 Upload Excel")
 
-    file = st.file_uploader("Upload", type=["xlsx"], key=st.session_state.upload_key)
+    file = st.file_uploader(
+        "Upload",
+        type=["xlsx"],
+        key=st.session_state.upload_key
+    )
 
     if file:
-        df = pd.read_excel(file, engine="openpyxl")
-        df = clean(df)
+        try:
+            # ✅ FORCE SAFE READ (fix openpyxl issue)
+            df = pd.read_excel(file, engine="openpyxl", dtype=str)
 
-        for c in COLUMNS:
-            if c not in df.columns:
-                df[c] = ""
+            df = clean(df)
 
-        df = df[COLUMNS]
+            # ✅ FIX: prevent Streamlit Arrow crash
+            df = df.astype(str)
 
-        st.dataframe(df)
+            # ensure all required columns exist
+            for c in COLUMNS:
+                if c not in df.columns:
+                    df[c] = ""
 
-        if st.button("Send to Approval"):
-            save_to_staging(df)
-            st.success("Sent to Approval")
-            st.session_state.page = "Approval"
-            st.rerun()
+            df = df[COLUMNS]
+
+            # ✅ FIX: ensure no float Zip / mixed types crash
+            if "Zip" in df.columns:
+                df["Zip"] = df["Zip"].astype(str)
+
+            st.dataframe(df, use_container_width=True)
+
+            if st.button("Send to Approval"):
+                save_to_staging(df)
+                st.success("Sent to Approval")
+                st.session_state.page = "Approval"
+                st.rerun()
+
+        except Exception as e:
+            st.error(f"❌ Upload failed: {e}")
 
     if st.button("Reset Upload"):
         st.session_state.upload_key += 1
         st.rerun()
-
 # =========================
 # APPROVAL
 # =========================
