@@ -553,7 +553,7 @@ elif st.session_state.page == "Upload":
     file = st.file_uploader("Upload", type=["xlsx"], key=st.session_state.upload_key)
 
     if file:
-        df = pd.read_excel(file)
+        df = pd.read_excel(file, engine="openpyxl")
         df = clean(df)
 
         for c in COLUMNS:
