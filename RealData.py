@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS staging (
 conn.commit()
 
 # =========================
-# SESSION
+# SESSION STATE
 # =========================
 if "page" not in st.session_state:
     st.session_state.page = "Dashboard"
@@ -58,7 +58,7 @@ if "sel" not in st.session_state:
 VALID_FIELDS = ["notes", "drive_by", "comp", "bid", "tax"]
 
 # =========================
-# CLEAN
+# CLEAN DATA
 # =========================
 def clean_df(df):
     df = df.copy()
@@ -79,10 +79,10 @@ def is_valid_row(row, min_required=2):
     return count >= min_required
 
 # =========================
-# ROW HASH (IMPORTANT FIX)
+# ROW HASH (CORE FIX FOR DUPLICATES)
 # =========================
 def row_hash(row):
-    base = {k: row.get(k, "") for k in VALID_FIELDS}
+    base = {k: str(row.get(k, "")).strip() for k in VALID_FIELDS}
     return hashlib.md5(json.dumps(base, sort_keys=True).encode()).hexdigest()
 
 # =========================
@@ -102,6 +102,7 @@ def load(table):
 
     df["data"] = df["data"].apply(json.loads)
     out = pd.json_normalize(df["data"])
+
     out["id"] = df["id"]
     out["created_at"] = df["created_at"]
 
@@ -135,7 +136,7 @@ def delete_staging(ids):
         conn.commit()
 
 # =========================
-# NAVBAR
+# NAVIGATION
 # =========================
 st.title("🏡 Auction WorkSpace")
 
@@ -149,7 +150,7 @@ for i, p in enumerate(pages):
             st.session_state.page = p
 
 # =========================
-# DASHBOARD
+# DASHBOARD (FIXED)
 # =========================
 if st.session_state.page == "Dashboard":
 
@@ -159,8 +160,8 @@ if st.session_state.page == "Dashboard":
     if df.empty:
         st.warning("No records found")
     else:
-        if "id" in df.columns:
-            df = df.drop(columns=["id"])
+        # remove first 2 columns (id + data artifacts)
+        df = df.iloc[:, 2:]
 
         st.dataframe(df, use_container_width=True)
 
@@ -188,7 +189,7 @@ elif st.session_state.page == "Upload":
                 st.rerun()
 
 # =========================
-# APPROVAL
+# APPROVAL (FULL FIXED LOGIC)
 # =========================
 elif st.session_state.page == "Approval":
 
@@ -196,21 +197,22 @@ elif st.session_state.page == "Approval":
     records = load("records")
 
     if staging.empty:
-        st.warning("No pending records")
+        st.warning("No pending data")
         st.stop()
 
     staging = clean_df(staging)
 
     # -------------------------
-    # FIX DUPLICATES (REAL LOGIC)
+    # DUPLICATE FIX (REAL LOGIC)
     # -------------------------
-    existing_hashes = set()
+    staging["row_hash"] = staging.apply(row_hash, axis=1)
 
     if not records.empty:
-        for _, r in records.iterrows():
-            existing_hashes.add(row_hash(r))
+        records["row_hash"] = records.apply(row_hash, axis=1)
+        existing_hashes = set(records["row_hash"])
+    else:
+        existing_hashes = set()
 
-    staging["row_hash"] = staging.apply(row_hash, axis=1)
     staging["is_dup"] = staging["row_hash"].isin(existing_hashes)
 
     new_df = staging[~staging["is_dup"]]
@@ -223,6 +225,7 @@ elif st.session_state.page == "Approval":
     # METRICS
     # =========================
     c1, c2, c3 = st.columns(3)
+
     with c1:
         st.metric("🆕 New", len(new_df))
     with c2:
@@ -257,17 +260,17 @@ elif st.session_state.page == "Approval":
 
         df = df.copy()
 
-        # REMOVE UI FIELD
+        # remove UI column
         if "is_dup" in df.columns:
             df = df.drop(columns=["is_dup"])
 
-        # MOVE created_at LAST
+        # move created_at last
         if "created_at" in df.columns:
             cols = [c for c in df.columns if c != "created_at"]
             cols.append("created_at")
             df = df[cols]
 
-        # CHECKBOX FIRST
+        # checkbox first column
         df.insert(0, "select", df["row_hash"].apply(lambda x: st.session_state.sel.get(x, False)))
 
         edited = st.data_editor(
@@ -280,7 +283,6 @@ elif st.session_state.page == "Approval":
             disabled=[col for col in df.columns if col != "select"]
         )
 
-        # SYNC STATE
         for _, row in edited.iterrows():
             st.session_state.sel[row["row_hash"]] = bool(row["select"])
 
