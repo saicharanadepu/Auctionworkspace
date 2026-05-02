@@ -53,6 +53,23 @@ if "sel" not in st.session_state:
     st.session_state.sel = {}
 
 # =========================
+# SAFE DATAFRAME FIX (🔥 NEW CRITICAL FIX)
+# =========================
+def safe_dataframe(df):
+
+    df = df.copy()
+
+    # remove duplicate columns (CRITICAL FOR STREAMLIT)
+    df = df.loc[:, ~df.columns.duplicated()]
+
+    # convert complex objects (json/list/dict) to string
+    for c in df.columns:
+        df[c] = df[c].apply(lambda x: str(x) if isinstance(x, (dict, list)) else x)
+
+    df = df.reset_index(drop=True)
+    return df
+
+# =========================
 # COLUMN NORMALIZATION
 # =========================
 def normalize_columns(df):
@@ -89,7 +106,7 @@ def clean_df(df):
     return df
 
 # =========================
-# VALIDATION (2+ FILLED REQUIRED)
+# VALIDATION (2+ REQUIRED)
 # =========================
 def is_valid_row(row):
 
@@ -116,7 +133,7 @@ def row_hash(row):
     return hashlib.md5(json.dumps(base, sort_keys=True).encode()).hexdigest()
 
 # =========================
-# SAFE COLUMN ORDER
+# COLUMN ORDER
 # =========================
 def order_columns(df):
 
@@ -130,7 +147,7 @@ def order_columns(df):
     return existing + remaining
 
 # =========================
-# SAFE SELECT HANDLING (CRITICAL FIX)
+# SAFE SELECT COLUMN
 # =========================
 def add_select_column(df):
     df = df.copy()
@@ -218,8 +235,8 @@ if st.session_state.page == "Dashboard":
 
     if not df.empty:
         df = add_select_column(df)
-        df = df[order_columns(df)]
-        st.dataframe(df, use_container_width=True)
+        df = order_columns(df)
+        st.dataframe(safe_dataframe(df), use_container_width=True)
 
 # =========================
 # UPLOAD
@@ -240,9 +257,9 @@ elif st.session_state.page == "Upload":
         st.success(f"Valid rows: {len(df)}")
 
         df = add_select_column(df)
-        df = df[order_columns(df)]
+        df = order_columns(df)
 
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(safe_dataframe(df), use_container_width=True)
 
         if st.button("Send to Approval"):
             save_staging(df.drop(columns=["select"]))
@@ -279,29 +296,18 @@ elif st.session_state.page == "Approval":
     c2.metric("⚠️ Duplicates", len(dup_df))
     c3.metric("📦 Total", len(staging))
 
-    # =========================
-    # NEW
-    # =========================
     st.subheader("NEW")
-
     if not new_df.empty:
         new_df = add_select_column(new_df)
-        new_df = new_df[order_columns(new_df)]
-        st.dataframe(new_df, use_container_width=True)
+        new_df = order_columns(new_df)
+        st.dataframe(safe_dataframe(new_df), use_container_width=True)
 
-    # =========================
-    # DUPLICATES
-    # =========================
     st.subheader("DUPLICATES")
-
     if not dup_df.empty:
         dup_df = add_select_column(dup_df)
-        dup_df = dup_df[order_columns(dup_df)]
-        st.dataframe(dup_df, use_container_width=True)
+        dup_df = order_columns(dup_df)
+        st.dataframe(safe_dataframe(dup_df), use_container_width=True)
 
-    # =========================
-    # ACTIONS
-    # =========================
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -326,7 +332,6 @@ elif st.session_state.page == "Approval":
 elif st.session_state.page == "Search":
 
     df = load("records")
-
     st.subheader("Search")
 
     q = st.text_input("Search")
@@ -335,9 +340,9 @@ elif st.session_state.page == "Search":
         df = df[df.astype(str).apply(lambda x: x.str.contains(q, case=False, na=False)).any(axis=1)]
 
     df = add_select_column(df)
-    df = df[order_columns(df)]
+    df = order_columns(df)
 
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(safe_dataframe(df), use_container_width=True)
 
 # =========================
 # ADMIN
