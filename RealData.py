@@ -53,20 +53,24 @@ if "sel" not in st.session_state:
     st.session_state.sel = {}
 
 # =========================
-# SAFE DATAFRAME FIX (🔥 NEW CRITICAL FIX)
+# SAFE DATAFRAME FIX (🔥 FINAL FIX)
 # =========================
 def safe_dataframe(df):
 
     df = df.copy()
 
-    # remove duplicate columns (CRITICAL FOR STREAMLIT)
-    df = df.loc[:, ~df.columns.duplicated()]
+    # force string column names (important for streamlit/pyarrow)
+    df.columns = [str(c) for c in df.columns]
 
-    # convert complex objects (json/list/dict) to string
+    # safe duplicate column removal (NO duplicated() crash)
+    df = df.T.groupby(level=0).first().T
+
+    # convert complex objects
     for c in df.columns:
         df[c] = df[c].apply(lambda x: str(x) if isinstance(x, (dict, list)) else x)
 
     df = df.reset_index(drop=True)
+
     return df
 
 # =========================
@@ -106,7 +110,7 @@ def clean_df(df):
     return df
 
 # =========================
-# VALIDATION (2+ REQUIRED)
+# VALIDATION
 # =========================
 def is_valid_row(row):
 
@@ -147,7 +151,7 @@ def order_columns(df):
     return existing + remaining
 
 # =========================
-# SAFE SELECT COLUMN
+# SELECT COLUMN FIX
 # =========================
 def add_select_column(df):
     df = df.copy()
